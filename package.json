@@ -1,0 +1,27 @@
+{
+  "name": "no-solo-carry",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A cooperative card game about redefining success, played online with a phone per player.",
+  "type": "module",
+  "workspaces": [
+    "packages/shared",
+    "packages/sim",
+    "packages/server",
+    "packages/client"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,magenta \"npm run dev -w @nsc/server\" \"npm run dev -w @nsc/client\"",
+    "build": "npm run build --workspace=@nsc/client && npm run build --workspace=@nsc/server",
+    "start": "npm run start --workspace=@nsc/server",
+    "test": "npm run test --workspace=@nsc/shared",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "sim": "npm run sim --workspace=@nsc/sim --"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.5"
+  }
+}

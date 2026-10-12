@@ -1,0 +1,28 @@
+{
+  "name": "@nsc/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Colyseus game server. One room per group, joined with a 4-letter code. Also serves the built client.",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsup",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json",
+    "smoke": "tsx scripts/smoke.ts"
+  },
+  "dependencies": {
+    "@colyseus/core": "^0.18.18",
+    "@colyseus/ws-transport": "^0.18.4",
+    "@nsc/shared": "*",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "@colyseus/sdk": "^0.18.5",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "tsup": "^8.3.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.3"
+  }
+}

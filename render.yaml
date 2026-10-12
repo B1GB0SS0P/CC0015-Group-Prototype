@@ -1,0 +1,12 @@
+# Render Blueprint: one free web service serves both the page and the game WebSockets.
+# New > Blueprint in the Render dashboard, then point it at this repository.
+services:
+  - type: web
+    name: no-solo-carry
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeployTrigger: commit
