@@ -8,6 +8,7 @@ import {
   type Boss,
   type Counts,
   type GameState,
+  type LogEntry,
   type LogKind,
   type Player,
   type Result,
@@ -35,8 +36,11 @@ function clone(state: GameState): GameState {
   return JSON.parse(JSON.stringify(state)) as GameState;
 }
 
-function log(state: GameState, kind: LogKind, text: string) {
-  state.log.push({ term: state.term, kind, text });
+type LogDetail = Pick<LogEntry, "from" | "to" | "bossId" | "token" | "amount">;
+
+function log(state: GameState, kind: LogKind, text: string, detail: LogDetail = {}) {
+  const seq = (state.log[state.log.length - 1]?.seq ?? 0) + 1;
+  state.log.push({ seq, term: state.term, kind, text, ...detail });
   if (state.log.length > MAX_LOG) state.log.splice(0, state.log.length - MAX_LOG);
 }
 
@@ -226,7 +230,7 @@ function spawnBoss(s: GameState, cfg: GameConfig) {
   const scale = cfg.hpMultiplierByPlayers[s.players.length] ?? 1;
   const hp = Math.max(1, Math.round(bc.hp * scale));
   s.bosses.push({ ...bc, hp, maxHp: hp, arrivedTerm: s.term });
-  log(s, "boss", `Term ${s.term}: ${bc.name} arrives with ${hp} HP.`);
+  log(s, "boss", `Term ${s.term}: ${bc.name} arrives with ${hp} HP.`, { bossId: bc.id, amount: hp });
 }
 
 export function startGame(state: GameState, cfg: GameConfig = GAME_CONFIG): Result {
@@ -321,11 +325,11 @@ function resolvePlacement(s: GameState, cfg: GameConfig) {
         target.energy = clampEnergy(target.energy + cfg.roleTargetRestore, cfg);
         p.stats.energyGivenToOthers += target.energy - before;
         const gained = target.energy - before;
-        log(s, "fire", gained > 0 ? `${p.name}'s statement fired: ${target.name} restores ${gained} Energy.` : `${p.name}'s statement fired, but ${target.name} was already at full Energy.`);
+        log(s, "fire", gained > 0 ? `${p.name}'s statement fired: ${target.name} restores ${gained} Energy.` : `${p.name}'s statement fired, but ${target.name} was already at full Energy.`, { from: p.id, to: target.id, amount: gained });
       }
     } else {
       s.tokenBonus[st.target.token] += cfg.tokenTargetBonus;
-      log(s, "fire", `${p.name}'s statement fired: ${TOKEN_LABEL[st.target.token]} tokens deal +${cfg.tokenTargetBonus} damage this term.`);
+      log(s, "fire", `${p.name}'s statement fired: ${TOKEN_LABEL[st.target.token]} tokens deal +${cfg.tokenTargetBonus} damage this term.`, { from: p.id, token: st.target.token, amount: cfg.tokenTargetBonus });
     }
   }
 
@@ -359,7 +363,7 @@ export function attack(state: GameState, id: string, bossId: string, token: Toke
   p.tokens[token] -= count;
   boss.hp -= dmg;
   p.stats.damageDealt += dmg;
-  log(s, "attack", `${p.name} hit ${boss.name} with ${count} ${TOKEN_LABEL[token]} for ${dmg}.${boss.hp === 0 ? ` ${boss.name} is beaten!` : ""}`);
+  log(s, "attack", `${p.name} hit ${boss.name} with ${count} ${TOKEN_LABEL[token]} for ${dmg}.${boss.hp === 0 ? ` ${boss.name} is beaten!` : ""}`, { from: p.id, bossId: boss.id, token, amount: dmg });
   return ok(s);
 }
 
@@ -378,7 +382,7 @@ export function attackSet(state: GameState, id: string, bossId: string, count: n
   const dmg = Math.min(boss.hp, cfg.setDamage * count);
   boss.hp -= dmg;
   p.stats.damageDealt += dmg;
-  log(s, "attack", `${p.name} spent ${count} full set${count > 1 ? "s" : ""} on ${boss.name} for ${dmg}.${boss.hp === 0 ? ` ${boss.name} is beaten!` : ""}`);
+  log(s, "attack", `${p.name} spent ${count} full set${count > 1 ? "s" : ""} on ${boss.name} for ${dmg}.${boss.hp === 0 ? ` ${boss.name} is beaten!` : ""}`, { from: p.id, bossId: boss.id, token: "set", amount: dmg });
   return ok(s);
 }
 
@@ -391,7 +395,7 @@ export function heal(state: GameState, id: string, count: number, cfg: GameConfi
   p.tokens.health -= count;
   const before = p.energy;
   p.energy = clampEnergy(p.energy + count * cfg.healthRestore, cfg);
-  log(s, "support", `${p.name} rested: +${p.energy - before} Energy.`);
+  log(s, "support", `${p.name} rested: +${p.energy - before} Energy.`, { from: p.id, to: p.id, token: "health", amount: p.energy - before });
   return ok(s);
 }
 
@@ -408,7 +412,7 @@ export function bond(state: GameState, id: string, targetId: string, count: numb
   const before = target.energy;
   target.energy = clampEnergy(target.energy + count * cfg.bondRestore, cfg);
   p.stats.energyGivenToOthers += target.energy - before;
-  log(s, "support", `${p.name} supported ${target.name}: +${target.energy - before} Energy.`);
+  log(s, "support", `${p.name} supported ${target.name}: +${target.energy - before} Energy.`, { from: p.id, to: target.id, token: "bond", amount: target.energy - before });
   return ok(s);
 }
 
@@ -424,7 +428,7 @@ export function give(state: GameState, id: string, targetId: string, token: Toke
   if (p.tokens[token] < count) return fail(`You only have ${p.tokens[token]} ${TOKEN_LABEL[token]}.`);
   p.tokens[token] -= count;
   target.tokens[token] += count;
-  log(s, "support", `${p.name} gave ${target.name} ${count} ${TOKEN_LABEL[token]}.`);
+  log(s, "support", `${p.name} gave ${target.name} ${count} ${TOKEN_LABEL[token]}.`, { from: p.id, to: target.id, token, amount: count });
   return ok(s);
 }
 
@@ -475,7 +479,7 @@ function endTerm(s: GameState, cfg: GameConfig) {
     p.sittingOut = p.energy <= 0;
     if (p.sittingOut) {
       p.stats.termsSatOut += 1;
-      log(s, "danger", `${p.name} is burned out and sits out Term ${s.term}.`);
+      log(s, "danger", `${p.name} is burned out and sits out Term ${s.term}.`, { from: p.id });
     }
   }
   s.phase = "place";

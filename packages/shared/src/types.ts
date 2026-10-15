@@ -84,9 +84,19 @@ export type Phase = "lobby" | "place" | "fight" | "over";
 export type LogKind = "info" | "fire" | "attack" | "support" | "boss" | "danger";
 
 export interface LogEntry {
+  /** Increases by one per entry, so a screen can tell which entries are new. */
+  seq: number;
   term: number;
   kind: LogKind;
   text: string;
+  /** Who acted and who it was for (player ids), so the board can draw it. */
+  from?: string;
+  to?: string;
+  bossId?: BossId;
+  /** The token spent, or "set" for a full set on Results Day. */
+  token?: Token | "set";
+  /** Damage dealt, Energy restored, or tokens passed. */
+  amount?: number;
 }
 
 export interface GameState {

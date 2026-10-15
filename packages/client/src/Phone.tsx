@@ -22,7 +22,7 @@ import {
   type Token,
 } from "@nsc/shared";
 import type { Game, LiveState } from "./net";
-import { BossCard, ConnectionBanner, Pips, StatementText, Tok, Toast } from "./ui";
+import { Battery, BossCard, ConnectionBanner, StatementText, Tok, TokenChip, Toast } from "./ui";
 
 type Send = Game["send"];
 
@@ -216,10 +216,8 @@ function Place({ me, state, send }: { me: Player; state: LiveState; send: Send }
   return (
     <div className="stack">
       <div className="sheet stack" style={{ gap: 6 }}>
-        <div className="spread">
-          <h2>Place {chips} chip{chips === 1 ? "" : "s"}</h2>
-          <span className="hand" style={{ fontSize: "1.6rem" }}>{left} left</span>
-        </div>
+        <h2>Split your time</h2>
+        <p className="small muted">{left ? `${left} of ${chips} chip${chips === 1 ? "" : "s"} left. Tap a tray to drop one in.` : "All chips placed."}</p>
         {chips < GAME_CONFIG.chipsPerTerm && <p className="small muted">You get one chip per point of Energy. Rest and teammates' Bond tokens bring it back up.</p>}
         {boss && (
           <p className="small">
@@ -244,26 +242,43 @@ function Place({ me, state, send }: { me: Player; state: LiveState; send: Send }
         </div>
       )}
 
-      <div className="sheet" style={{ paddingTop: 4, paddingBottom: 4 }}>
+      <div className="timechips" aria-hidden="true">
+        {Array.from({ length: chips }, (_, i) => (
+          <span key={i} className={`tc${i < used ? " used" : ""}`} />
+        ))}
+      </div>
+
+      <div className="trays">
         {ACTIVITIES.map((a) => {
           const per = a === dbl ? 2 : 1;
+          const tok = ACTIVITY_TOKEN[a];
           return (
-            <div key={a} className="stepper">
-              <div>
-                <strong>{ACTIVITY_LABEL[a]}</strong>{" "}
-                {a === dbl && <span className="badge">doubled</span>}
-                <div className="small muted">
-                  Each chip: {per} <span style={{ color: `var(--${ACTIVITY_TOKEN[a]})`, fontWeight: 700 }}>{TOKEN_LABEL[ACTIVITY_TOKEN[a]]}</span>
-                  {a === "study" ? ", costs 1 Energy" : ""}
-                </div>
-              </div>
-              <button className="round" aria-label={`Remove a chip from ${ACTIVITY_LABEL[a]}`} disabled={placement[a] === 0} onClick={() => setPlacement({ ...placement, [a]: placement[a] - 1 })}>
-                −
+            <div key={a} className="tray-wrap">
+              <button
+                className="tray"
+                aria-label={`Add a chip to ${ACTIVITY_LABEL[a]}`}
+                disabled={left === 0}
+                onClick={() => setPlacement({ ...placement, [a]: placement[a] + 1 })}
+              >
+                <span className="tt">
+                  <b>{ACTIVITY_LABEL[a]}</b>
+                  {a === dbl && <span className="badge">doubled</span>}
+                </span>
+                <span className="yield">
+                  1 chip → {per}× <TokenChip token={tok} /> {TOKEN_LABEL[tok]}
+                </span>
+                {a === "study" && <span className="cost">costs 1 Energy per chip</span>}
+                <span className="slots" aria-live="polite" aria-label={`${placement[a]} on ${ACTIVITY_LABEL[a]}`}>
+                  {Array.from({ length: placement[a] }, (_, i) => (
+                    <span key={i} className="tc" />
+                  ))}
+                </span>
               </button>
-              <span className="count" aria-live="polite">{placement[a]}</span>
-              <button className="round" aria-label={`Add a chip to ${ACTIVITY_LABEL[a]}`} disabled={left === 0} onClick={() => setPlacement({ ...placement, [a]: placement[a] + 1 })}>
-                +
-              </button>
+              {placement[a] > 0 && (
+                <button className="rm" aria-label={`Take a chip back from ${ACTIVITY_LABEL[a]}`} onClick={() => setPlacement({ ...placement, [a]: placement[a] - 1 })}>
+                  −
+                </button>
+              )}
             </div>
           );
         })}
@@ -326,6 +341,7 @@ function Fight({ me, state, send }: { me: Player; state: LiveState; send: Send }
   const [giveTok, setGiveTok] = useState<Token>("grade");
   const hasAny = TOKENS.some((t) => me.tokens[t] > 0);
   const bonuses = TOKENS.filter((t) => state.tokenBonus[t] > 0);
+  const restWhy = me.tokens.health === 0 ? "No Health left" : me.energy >= GAME_CONFIG.maxEnergy ? "You're at full Energy" : null;
 
   return (
     <div className="stack">
@@ -350,61 +366,36 @@ function Fight({ me, state, send }: { me: Player; state: LiveState; send: Send }
         )}
       </div>
 
-      {bosses.map((b) => {
-        const sets = Math.min(...TOKENS.map((t) => me.tokens[t]));
-        const missing = TOKENS.filter((t) => me.tokens[t] === 0);
-        return (
-          <section key={b.id}>
-            <BossCard boss={b} current={b.arrivedTerm === state.term} />
-            {b.special === "sets" ? (
-              <div className="stack" style={{ gap: 6, marginTop: 10 }}>
-                <button className="btn primary block" disabled={sets === 0} onClick={() => send("attackSet", { bossId: b.id, count: 1 })}>
-                  Spend a full set ({GAME_CONFIG.setDamage} damage)
-                </button>
-                {missing.length > 0 && (
-                  <p className="small muted">
-                    You're missing {missing.map((t) => TOKEN_LABEL[t]).join(", ")}. Ask a teammate to pass you one, or pass yours to whoever is closest to a set.
-                  </p>
-                )}
+      <section className="stack" style={{ gap: 10 }}>
+        <h2>Help a teammate</h2>
+        <p className="small muted">A Bond token gives a teammate +{GAME_CONFIG.bondRestore} Energy. You have {me.tokens.bond}.</p>
+        {mates.map((m) => {
+          const why = me.tokens.bond === 0 ? "No Bond left" : m.energy >= GAME_CONFIG.maxEnergy ? "Full Energy" : null;
+          return (
+            <div key={m.id} className="mate">
+              <div className="nm">
+                <b>{m.name}</b>
+                <Battery value={m.energy} label={`${m.name}'s Energy`} />
+                {m.sittingOut ? <span className="ask">Burned out. Bond brings them back</span> : m.energy <= 1 ? <span className="ask">Could use support</span> : null}
               </div>
-            ) : (
-              <div className="actions">
-                {TOKENS.map((t) => (
-                  <button key={t} className={`act ${t}`} disabled={me.tokens[t] === 0} onClick={() => send("attack", { bossId: b.id, token: t, count: 1 })}>
-                    Hit with 1 {TOKEN_LABEL[t]}
-                    <span>{tokenDamage(state, b, t)} damage</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-        );
-      })}
-
-      <section className="sheet stack" style={{ gap: 10 }}>
-        <h2>Support</h2>
-        <button className="act health" disabled={me.tokens.health === 0 || me.energy >= GAME_CONFIG.maxEnergy} onClick={() => send("heal", { count: 1 })}>
-          Rest: use 1 Health
-          <span>+{GAME_CONFIG.healthRestore} Energy for you</span>
-        </button>
-        {mates.map((m) => (
-          <div key={m.id} className="spread" style={{ borderTop: "1.5px dashed var(--rule)", paddingTop: 10 }}>
-            <div>
-              <strong>{m.name}</strong> <Pips value={m.energy} />
-              {m.sittingOut && <span className="badge red" style={{ marginLeft: 6 }}>Burned out</span>}
+              <button className="give" disabled={!!why} onClick={() => send("bond", { targetId: m.id, count: 1 })}>
+                <TokenChip token="bond" ghost={!!why} />
+                {why ?? `+${GAME_CONFIG.bondRestore} Energy`}
+              </button>
             </div>
-            <button
-              className="act bond"
-              style={{ minHeight: 0 }}
-              disabled={me.tokens.bond === 0 || m.energy >= GAME_CONFIG.maxEnergy}
-              onClick={() => send("bond", { targetId: m.id, count: 1 })}
-            >
-              Give 1 Bond
-              <span>+{GAME_CONFIG.bondRestore} Energy</span>
-            </button>
+          );
+        })}
+        <div className="mate">
+          <div className="nm">
+            <b>You</b>
+            <span className="small muted">Rest with a Health token</span>
           </div>
-        ))}
-        <details>
+          <button className="give self" disabled={!!restWhy} onClick={() => send("heal", { count: 1 })}>
+            <TokenChip token="health" ghost={!!restWhy} />
+            {restWhy ?? `+${GAME_CONFIG.healthRestore} Energy`}
+          </button>
+        </div>
+        <details className="pass">
           <summary>Pass a token to a teammate</summary>
           <div className="row" style={{ marginTop: 10 }}>
             <select className="input" style={{ flex: 1 }} value={giveTo} onChange={(e) => setGiveTo(e.target.value)} aria-label="Teammate">
@@ -422,11 +413,51 @@ function Fight({ me, state, send }: { me: Player; state: LiveState; send: Send }
               ))}
             </select>
             <button className="btn" disabled={!giveTo || me.tokens[giveTok] === 0} onClick={() => send("give", { targetId: giveTo, token: giveTok, count: 1 })}>
-              Pass 1
+              {me.tokens[giveTok] === 0 ? "None to pass" : "Pass 1"}
             </button>
           </div>
         </details>
       </section>
+
+      {bosses.map((b) => {
+        const missing = TOKENS.filter((t) => me.tokens[t] === 0);
+        return (
+          <section key={b.id} className="stack" style={{ gap: 10 }}>
+            <BossCard boss={b} />
+            {b.special === "sets" ? (
+              <div className="stack" style={{ gap: 8 }}>
+                <div className="setrow">
+                  {TOKENS.map((t) => (
+                    <TokenChip key={t} token={t} ghost={me.tokens[t] === 0} />
+                  ))}
+                </div>
+                <button className="btn primary block" disabled={missing.length > 0} onClick={() => send("attackSet", { bossId: b.id, count: 1 })}>
+                  {missing.length ? `Missing ${missing.map((t) => TOKEN_LABEL[t]).join(", ")}` : `Spend a full set (${GAME_CONFIG.setDamage} damage)`}
+                </button>
+                {missing.length > 0 && <p className="small muted">Ask a teammate to pass you what you're missing, or pass yours to whoever is closest to a set.</p>}
+              </div>
+            ) : (
+              <div className="hits">
+                {TOKENS.map((t) => {
+                  const n = me.tokens[t];
+                  const weak = b.weakness === t;
+                  return (
+                    <button key={t} className={`tokbtn ${t}`} disabled={n === 0} onClick={() => send("attack", { bossId: b.id, token: t, count: 1 })} aria-label={`Hit ${b.name} with 1 ${TOKEN_LABEL[t]}`}>
+                      <TokenChip token={t} ghost={n === 0} />
+                      <span>
+                        <b>{TOKEN_LABEL[t]}</b>
+                        <small>{n === 0 ? "none left" : `${tokenDamage(state, b, t)} damage`}</small>
+                      </span>
+                      {n > 0 && <span className="x">×{n}</span>}
+                      {weak && n > 0 && <span className="weakspot">weak spot</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        );
+      })}
 
       <div className="sticky-foot">
         <div className="narrow">
@@ -505,7 +536,7 @@ export function Phone({ game }: { game: Game }) {
               <div className="small muted">{me.role ? `${ROLE_INFO[me.role].name} (${ROLE_INFO[me.role].moba})` : "No role yet"}</div>
             </div>
             <div style={{ textAlign: "right" }}>
-              {s.phase !== "lobby" && <Pips value={me.energy} />}
+              {s.phase !== "lobby" && <Battery value={me.energy} label="Your Energy" />}
               <div className="small muted">{phaseLabel}</div>
             </div>
           </div>
