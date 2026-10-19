@@ -32,7 +32,11 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173 and choose **Open a board screen**. Phones on the same Wi-Fi can join at `http://<your-laptop-ip>:5173/join/<CODE>`, or by scanning the QR code on the board.
+Open http://localhost:5173 and choose **Open a board screen**. Phones on the same Wi-Fi can join at `http://<your-laptop-ip>:5173/join/<CODE>`, or by scanning the QR code on the board. New players can read the rules at `/how-to-play`.
+
+On the board:
+- **Playing too?** in the lobby gives the host a seat. Their hand opens in a panel beside the board, which they can hide while projecting.
+- **Players** in the corner lets the host remove a player. A removed player can't rejoin that game under the same name. Mid-game, the team plays on without them.
 
 To run the production build the same way Render does:
 
@@ -91,6 +95,7 @@ Connections handle real classrooms:
 - A refreshed page resumes where it was.
 - Rejoining with the same name takes back a seat, so a player can switch to a new phone.
 - The board screen can reclaim host control after a refresh.
+- Every screen sends a small keep-alive message each minute, so Render's free tier doesn't put the server to sleep during a quiet debrief.
 - There are no accounts: players join with a code and a nickname, and nothing is stored after the game.
 
 ## Testing

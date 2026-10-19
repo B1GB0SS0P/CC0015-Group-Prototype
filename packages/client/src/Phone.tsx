@@ -116,7 +116,12 @@ function Lobby({ me, state, send }: { me: Player; state: LiveState; send: Send }
   return (
     <div className="stack">
       <section className="stack" style={{ gap: 10 }}>
-        <h2>1. Pick a role</h2>
+        <div className="spread">
+          <h2>1. Pick a role</h2>
+          <a className="small" href="/how-to-play" target="_blank" rel="noreferrer">
+            How to play
+          </a>
+        </div>
         <p className="muted small">Each role doubles one activity. Only one person per role.</p>
         <div className="roles">
           {ROLES.map((r) => {
@@ -515,7 +520,7 @@ export function Phone({ game }: { game: Game }) {
     return (
       <main className="page">
         <div className="narrow stack">
-          <ConnectionBanner status={game.status} />
+          <ConnectionBanner status={game.status} onReset={() => void game.leave()} />
           <p className="hand">Joining…</p>
         </div>
       </main>
@@ -540,7 +545,7 @@ export function Phone({ game }: { game: Game }) {
               <div className="small muted">{phaseLabel}</div>
             </div>
           </div>
-          <ConnectionBanner status={game.status} />
+          <ConnectionBanner status={game.status} onReset={() => void game.leave()} />
         </header>
 
         {s.phase === "lobby" && <Lobby me={me} state={s} send={game.send} />}

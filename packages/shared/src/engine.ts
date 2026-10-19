@@ -156,6 +156,21 @@ export function removePlayer(state: GameState, id: string): Result {
   return ok(s);
 }
 
+/**
+ * The host removes a player, in any phase. Mid-game the team plays on without
+ * them, and the step moves on if they were the one everyone was waiting for.
+ */
+export function kickPlayer(state: GameState, id: string, cfg: GameConfig = GAME_CONFIG): Result {
+  const p = findPlayer(state, id);
+  if (!p) return fail("That player has already left.");
+  const playing = state.phase === "place" || state.phase === "fight";
+  if (playing && state.players.length <= 1) return fail("Can't remove the last player mid-game. End the game with Play again instead.");
+  const s = clone(state);
+  s.players = s.players.filter((x) => x.id !== id);
+  log(s, "info", `${p.name} was removed from the game.`);
+  return ok(playing ? advance(s, cfg) : s);
+}
+
 export function setConnected(state: GameState, id: string, connected: boolean): Result {
   const s = clone(state);
   const p = findPlayer(s, id);

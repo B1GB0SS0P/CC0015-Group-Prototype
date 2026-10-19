@@ -63,13 +63,16 @@ export function Home({ game, initialCode }: { game: Game; initialCode: string })
           </button>
         </section>
 
-        <section className="stack" style={{ gap: 6 }}>
-          <h3>How it works</h3>
+        <section className="sheet stack how-teaser" style={{ gap: 10 }}>
+          <h3>New here?</h3>
           <ol className="muted" style={{ margin: 0, paddingLeft: "1.2em" }}>
-            <li>Pick a role and write a Success Statement that helps a teammate or the team.</li>
+            <li>Pick a role and write a Success Statement that helps a teammate.</li>
             <li>Each term, split your time between Study, Rest, Friends and Interest.</li>
             <li>Beat four bosses together. Grades alone won't do it.</li>
           </ol>
+          <a className="btn primary" href="/how-to-play">
+            How to play
+          </a>
         </section>
       </div>
     </main>

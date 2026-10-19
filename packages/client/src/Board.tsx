@@ -264,7 +264,7 @@ function Team({ s }: { s: LiveState }) {
   if (s.players.length === 0) return <p className="team-empty">Nobody yet. Scan the code to join.</p>;
   const playing = s.phase === "place" || s.phase === "fight";
   return (
-    <div className="team" style={{ gridTemplateColumns: `repeat(${Math.max(3, s.players.length)}, minmax(0, 1fr))` }}>
+    <div className={`team${s.players.length >= 5 ? " crowded" : ""}`} style={{ gridTemplateColumns: `repeat(${Math.max(3, s.players.length)}, minmax(0, 1fr))` }}>
       {s.players.map((p) => {
         const st = status(p, s);
         const ok = st === "Ready" || st === "Placed" || st === "Done";
@@ -298,7 +298,39 @@ function Team({ s }: { s: LiveState }) {
 
 // ---------------------------------------------------------------------------
 
-function Stage({ s, canStartError, onStart }: { s: LiveState; canStartError: string | null; onStart: () => void }) {
+/** The person running the board can take a seat too, played from a panel beside the board. */
+function JoinAsHost({ onJoin }: { onJoin: (name: string) => void }) {
+  const [name, setName] = useState("");
+  return (
+    <form
+      className="host-join"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (name.trim()) onJoin(name.trim());
+      }}
+    >
+      <label htmlFor="host-name">Playing too?</label>
+      <input id="host-name" className="input" value={name} maxLength={16} placeholder="Your name" onChange={(e) => setName(e.target.value)} />
+      <button className="btn" disabled={!name.trim()}>
+        Join on this screen
+      </button>
+    </form>
+  );
+}
+
+function Stage({
+  s,
+  canStartError,
+  onStart,
+  seatName,
+  onSeat,
+}: {
+  s: LiveState;
+  canStartError: string | null;
+  onStart: () => void;
+  seatName: string | null;
+  onSeat: (name: string) => void;
+}) {
   if (s.phase === "lobby") {
     return (
       <div className="stage lobby">
@@ -321,6 +353,7 @@ function Stage({ s, canStartError, onStart }: { s: LiveState; canStartError: str
             </button>
             {canStartError && <span className="lead small-lead">{canStartError}</span>}
           </div>
+          {!seatName && <JoinAsHost onJoin={onSeat} />}
         </div>
       </div>
     );
@@ -330,21 +363,32 @@ function Stage({ s, canStartError, onStart }: { s: LiveState; canStartError: str
     const summary = teamSummary(s);
     return (
       <div className="stage over">
-        <div className="stack" style={{ gap: "calc(var(--u) * 1.2)" }}>
-          <p className={`outcome ${s.outcome}`}>{s.outcome === "win" ? "The team wins together." : "The team loses together."}</p>
-          <div className="stats">
-            <span>
-              <b>{summary.bossesBeaten}</b> of {summary.bossesTotal} bosses beaten
-            </span>
-            <span>
-              <b>{summary.statementFires}</b> statements fired
-            </span>
-            <span>
-              <b>{summary.energyGivenToOthers}</b> Energy given to teammates
-            </span>
-            <span>
-              <b>{summary.termsSatOut}</b> terms lost to burnout
-            </span>
+        <p className={`outcome ${s.outcome}`}>{s.outcome === "win" ? "The team wins together." : "The team loses together."}</p>
+        <div className="stats">
+          <span>
+            <b>{summary.bossesBeaten}/{summary.bossesTotal}</b> bosses beaten
+          </span>
+          <span>
+            <b>{summary.statementFires}</b> statements fired
+          </span>
+          <span>
+            <b>{summary.energyGivenToOthers}</b> Energy shared
+          </span>
+          <span>
+            <b>{summary.termsSatOut}</b> terms burned out
+          </span>
+        </div>
+        <div className="over-left">
+          <div className="over-statements">
+            <h2>Your Success Statements</h2>
+            <ul>
+              {s.players.map((p) => (
+                <li key={p.id}>
+                  <b>{p.name}</b>
+                  {shortStatement(p)}
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
         <div className="debrief">
@@ -399,9 +443,85 @@ function Stage({ s, canStartError, onStart }: { s: LiveState; canStartError: str
   );
 }
 
+const SEAT_KEY = "nsc-host-seat";
+
+/** The host's own seat name for this game, remembered across a refresh. */
+function readSeat(code: string | undefined): string | null {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(SEAT_KEY) ?? "null") as { code: string; name: string } | null;
+    return saved && saved.code === code ? saved.name : null;
+  } catch {
+    return null;
+  }
+}
+
+function useHostSeat(code: string | undefined) {
+  const [seat, setSeat] = useState<string | null>(() => readSeat(code));
+  // The code arrives after the first render on a refresh.
+  useEffect(() => {
+    if (code) setSeat(readSeat(code));
+  }, [code]);
+  const update = (name: string | null) => {
+    setSeat(name);
+    try {
+      if (name && code) sessionStorage.setItem(SEAT_KEY, JSON.stringify({ code, name }));
+      else sessionStorage.removeItem(SEAT_KEY);
+    } catch {
+      // Storage blocked: the panel just won't come back after a refresh.
+    }
+  };
+  return [seat, update] as const;
+}
+
+function PlayersMenu({ s, send, onClose }: { s: LiveState; send: Game["send"]; onClose: () => void }) {
+  const [confirm, setConfirm] = useState<string | null>(null);
+  return (
+    <div className="players-menu" role="dialog" aria-label="Players">
+      <div className="spread">
+        <b>Players</b>
+        <button className="btn ghost" onClick={onClose}>
+          Close
+        </button>
+      </div>
+      {s.players.length === 0 && <p className="muted">Nobody has joined yet.</p>}
+      {s.players.map((p) => (
+        <div key={p.id} className="pm-row">
+          <span>
+            <b>{p.name}</b> <span className="muted">{p.connected ? (p.role ? ROLE_INFO[p.role].name.replace(/^The /, "") : "no role yet") : "offline"}</span>
+          </span>
+          {confirm === p.id ? (
+            <span className="row" style={{ gap: 6 }}>
+              <button
+                className="btn danger"
+                onClick={() => {
+                  send("kick", { playerId: p.id });
+                  setConfirm(null);
+                }}
+              >
+                Remove
+              </button>
+              <button className="btn ghost" onClick={() => setConfirm(null)}>
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <button className="btn" onClick={() => setConfirm(p.id)}>
+              Remove…
+            </button>
+          )}
+        </div>
+      ))}
+      {confirm && <p className="small muted">They can't rejoin this game under the same name.{s.phase !== "lobby" ? " The team plays on without them." : ""}</p>}
+    </div>
+  );
+}
+
 export function Board({ game }: { game: Game }) {
   const s = game.state;
   const [confirmSkip, setConfirmSkip] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [seat, setSeat] = useHostSeat(s?.code);
+  const [seatHidden, setSeatHidden] = useState(false);
   const startError = useMemo(() => (s && s.phase === "lobby" ? canStart(s) : null), [s]);
   const boardRef = useRef<HTMLDivElement>(null);
   const fxRef = useRef<HTMLDivElement>(null);
@@ -430,88 +550,122 @@ export function Board({ game }: { game: Game }) {
 
   const beaten = s.bosses.filter((b) => b.hp <= 0);
   const playing = s.phase === "place" || s.phase === "fight";
+  const seatPlayer = seat ? s.players.find((p) => p.name.toLowerCase() === seat.toLowerCase()) : undefined;
 
   return (
-    <main className="board-screen">
+    <main className={`board-screen${seat && !seatHidden ? " with-seat" : ""}`}>
       <DoodleDefs />
-      <ConnectionBanner status={game.status} />
-      <div className="board" ref={boardRef}>
-        <div className="bin">
-          <div className="top">
-            <div className="tape">
-              <small>Join with code</small>
-              <b>{s.code}</b>
+      <div className="board-area">
+        <div className="board" ref={boardRef}>
+          <div className="bin">
+            <div className="top" hidden={s.phase === "over"}>
+              <div className="tape">
+                <small>Join with code</small>
+                <b>{s.code}</b>
+              </div>
+              <div className="where">
+                {s.phase !== "lobby" && (
+                  <div className="terms" aria-label={`Term ${s.term} of ${GAME_CONFIG.terms}`}>
+                    {Array.from({ length: GAME_CONFIG.terms }, (_, i) => i + 1).map((t) => (
+                      <span key={t} className={`term${t < s.term || s.phase === "over" ? " past" : t === s.term ? " now" : ""}`}>
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="phase-name">{PHASE_NAME[s.phase]}</div>
+              </div>
+              <div className="stickers">
+                {beaten.map((b) => (
+                  <span key={b.id} className="sticker">
+                    <BossDoodle id={b.id} />
+                    <span>{b.name}</span>
+                    <em>Beaten</em>
+                  </span>
+                ))}
+              </div>
             </div>
-            <div className="where">
-              {s.phase !== "lobby" && (
-                <div className="terms" aria-label={`Term ${s.term} of ${GAME_CONFIG.terms}`}>
-                  {Array.from({ length: GAME_CONFIG.terms }, (_, i) => i + 1).map((t) => (
-                    <span key={t} className={`term${t < s.term || s.phase === "over" ? " past" : t === s.term ? " now" : ""}`}>
-                      {t}
-                    </span>
-                  ))}
+
+            <div className={`middle${playing ? " with-banner" : ""}`}>
+              {playing && (
+                <div className="banner-line" ref={bannerRef} aria-live="polite">
+                  {banner ? <EventLine e={banner} s={s} /> : <span className="hint">{PHASE_HINT[s.phase]}</span>}
                 </div>
               )}
-              <div className="phase-name">{PHASE_NAME[s.phase]}</div>
+              <Stage s={s} canStartError={startError} onStart={() => game.send("start", {})} seatName={seat} onSeat={(name) => setSeat(name)} />
             </div>
-            <div className="stickers">
-              {beaten.map((b) => (
-                <span key={b.id} className="sticker">
-                  <BossDoodle id={b.id} />
-                  <span>{b.name}</span>
-                  <em>Beaten</em>
-                </span>
-              ))}
-            </div>
-          </div>
 
-          <div className={`middle${playing ? " with-banner" : ""}`}>
-            {playing && (
-              <div className="banner-line" ref={bannerRef} aria-live="polite">
-                {banner ? <EventLine e={banner} s={s} /> : <span className="hint">{PHASE_HINT[s.phase]}</span>}
-              </div>
-            )}
-            <Stage s={s} canStartError={startError} onStart={() => game.send("start", {})} />
+            {s.phase !== "over" && <Team s={s} />}
           </div>
-
-          <Team s={s} />
+          <div className="fx" ref={fxRef} />
+          <svg className="arrows" ref={arrowsRef} aria-hidden="true" />
         </div>
-        <div className="fx" ref={fxRef} />
-        <svg className="arrows" ref={arrowsRef} aria-hidden="true" />
+
+        <ConnectionBanner status={game.status} onReset={() => void game.leave()} />
+
+        {menu && <PlayersMenu s={s} send={game.send} onClose={() => setMenu(false)} />}
+
+        <div className="host-ctl">
+          {playing &&
+            (confirmSkip ? (
+              <>
+                <span>Move on without waiting? Anyone who hasn't finished does nothing this step.</span>
+                <button
+                  className="btn danger"
+                  onClick={() => {
+                    game.send("forceNext", {});
+                    setConfirmSkip(false);
+                  }}
+                >
+                  Move on
+                </button>
+                <button className="btn ghost" onClick={() => setConfirmSkip(false)}>
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button className="btn" onClick={() => setConfirmSkip(true)}>
+                Skip waiting
+              </button>
+            ))}
+          {s.phase === "over" && (
+            <button className="btn primary" onClick={() => game.send("restart", {})}>
+              Play again
+            </button>
+          )}
+          {seat && (
+            <button className="btn" onClick={() => setSeatHidden((h) => !h)}>
+              {seatHidden ? "Show my hand" : "Hide my hand"}
+            </button>
+          )}
+          <button className="btn" onClick={() => setMenu((m) => !m)} aria-expanded={menu}>
+            Players ({s.players.length})
+          </button>
+          <button className="btn ghost" onClick={() => void game.leave()}>
+            Close board
+          </button>
+        </div>
       </div>
 
-      <div className="host-ctl">
-        {playing &&
-          (confirmSkip ? (
-            <>
-              <span>Move on without waiting? Anyone who hasn't finished does nothing this step.</span>
+      {seat && (
+        <aside className="seat-panel" hidden={seatHidden} aria-label="Your hand">
+          <div className="seat-head">
+            <b>Your hand</b>
+            {s.phase === "lobby" && (
               <button
-                className="btn danger"
+                className="btn ghost"
                 onClick={() => {
-                  game.send("forceNext", {});
-                  setConfirmSkip(false);
+                  if (seatPlayer) game.send("kick", { playerId: seatPlayer.id, ban: false });
+                  setSeat(null);
                 }}
               >
-                Move on
+                Stop playing
               </button>
-              <button className="btn ghost" onClick={() => setConfirmSkip(false)}>
-                Cancel
-              </button>
-            </>
-          ) : (
-            <button className="btn" onClick={() => setConfirmSkip(true)}>
-              Skip waiting
-            </button>
-          ))}
-        {s.phase === "over" && (
-          <button className="btn primary" onClick={() => game.send("restart", {})}>
-            Play again
-          </button>
-        )}
-        <button className="btn ghost" onClick={() => void game.leave()}>
-          Close board
-        </button>
-      </div>
+            )}
+          </div>
+          <iframe title="Your hand" src={`/join/${s.code}?seat=1&name=${encodeURIComponent(seat)}`} />
+        </aside>
+      )}
       <Toast text={game.error} />
     </main>
   );

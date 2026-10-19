@@ -10,6 +10,7 @@ import {
   forceAdvance,
   give,
   heal,
+  kickPlayer,
   removePlayer,
   resetToLobby,
   setConnected,
@@ -58,6 +59,8 @@ export class GameRoom extends Room {
   /** True once the creating board screen has joined. Later board screens need the host key. */
   private hostClaimed = false;
   private hostKey = randomBytes(12).toString("hex");
+  /** Names the host removed. They can't take a seat again in this game. */
+  private removed = new Set<string>();
 
   async onCreate(options: JoinOptions) {
     this.roomId = await uniqueCode();
@@ -77,6 +80,8 @@ export class GameRoom extends Room {
       done: (c, m) => this.asPlayer(c, (id) => setDone(this.game, id, Boolean(m?.done))),
       forceNext: (c) => this.asHost(c, () => forceAdvance(this.game)),
       restart: (c) => this.asHost(c, () => resetToLobby(this.game)),
+      kick: (c, m) => this.asHost(c, () => this.kick(String(m?.playerId ?? ""), m?.ban !== false)),
+      ping: () => ({ ok: true, state: this.game }),
     };
 
     for (const [type, handler] of Object.entries(handlers)) {
@@ -88,6 +93,7 @@ export class GameRoom extends Room {
           console.error(`[${this.roomId}] ${type} failed`, err);
           result = { ok: false, error: "Something went wrong. Try again." };
         }
+        if (type === "ping") return;
         if (result.ok) {
           this.game = result.state;
           this.broadcastState();
@@ -112,6 +118,7 @@ export class GameRoom extends Room {
 
     const name = String(options.name ?? "").trim();
     if (!name) throw new ServerError(400, "Enter a name.");
+    if (this.removed.has(name.toLowerCase())) throw new ServerError(403, "The host removed you from this game.");
 
     // Joining under the name of a disconnected seat takes it back (refresh, dead battery, new phone).
     const seat = this.game.players.find((p) => p.name.toLowerCase() === name.toLowerCase());
@@ -155,6 +162,12 @@ export class GameRoom extends Room {
     // A refreshed page reconnects with an empty UI, so always say who it is again.
     if (client.sessionId === this.hostSession) client.send("welcome", { playerId: null, isHost: true, hostKey: this.hostKey, code: this.roomId });
     else if (pid) client.send("welcome", { playerId: pid, isHost: false, code: this.roomId });
+    else {
+      // Removed by the host while their phone was offline.
+      client.send("kicked", { message: "The host removed you from this game." });
+      client.leave(4001);
+      return;
+    }
     this.broadcastState();
   }
 
@@ -179,6 +192,22 @@ export class GameRoom extends Room {
   }
 
   // ---------------------------------------------------------------------------
+
+  /** Remove a player and close their connection so their phone doesn't keep acting. */
+  private kick(playerId: string, ban: boolean): Result {
+    const p = this.game.players.find((x) => x.id === playerId);
+    const result = kickPlayer(this.game, playerId);
+    if (!result.ok || !p) return result;
+    if (ban) this.removed.add(p.name.toLowerCase());
+    for (const [sid, pid] of this.seats) {
+      if (pid !== playerId) continue;
+      this.seats.delete(sid);
+      const client = this.clients.find((c) => c.sessionId === sid);
+      client?.send("kicked", { message: "The host removed you from this game." });
+      client?.leave(4001);
+    }
+    return result;
+  }
 
   private asPlayer(client: Client, fn: (playerId: string) => Result): Result {
     const pid = this.seats.get(client.sessionId);

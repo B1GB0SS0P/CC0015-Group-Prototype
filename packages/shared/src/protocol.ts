@@ -26,6 +26,10 @@ export interface ClientMessages {
   done: { done: boolean };
   forceNext: Record<string, never>;
   restart: Record<string, never>;
+  /** Host only: remove a player from the game. */
+  kick: { playerId: string; ban?: boolean };
+  /** Keep-alive. Free hosts (Render) sleep after 15 minutes without incoming messages. */
+  ping: Record<string, never>;
 }
 
 /** Messages from the server to a client. */
@@ -33,4 +37,6 @@ export interface ServerMessages {
   state: GameState & { code: string };
   welcome: { playerId: string | null; isHost: boolean; hostKey?: string; code: string };
   error: { message: string };
+  /** Sent to a player the host removed, just before their connection closes. */
+  kicked: { message: string };
 }

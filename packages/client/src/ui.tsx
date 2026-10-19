@@ -197,8 +197,31 @@ export function Toast({ text }: { text: string | null }) {
   );
 }
 
-export function ConnectionBanner({ status }: { status: string }) {
-  if (status === "reconnecting") return <div className="banner">Connection lost. Reconnecting…</div>;
-  if (status === "closed") return <div className="banner">Disconnected from the game. Refresh to rejoin.</div>;
+/**
+ * Shown when the connection drops. Reconnecting usually fixes itself within
+ * seconds; if the game is gone (server restarted or slept), offer a way out.
+ */
+export function ConnectionBanner({ status, onReset }: { status: string; onReset?: () => void }) {
+  if (status === "reconnecting")
+    return (
+      <div className="conn" role="status">
+        <span className="conn-dot" aria-hidden="true" />
+        Connection lost. Reconnecting…
+      </div>
+    );
+  if (status === "closed")
+    return (
+      <div className="conn closed" role="alert">
+        <span>Lost the connection to this game.</span>
+        <button className="btn" onClick={() => window.location.reload()}>
+          Try again
+        </button>
+        {onReset && (
+          <button className="btn ghost" onClick={onReset}>
+            Start over
+          </button>
+        )}
+      </div>
+    );
   return null;
 }

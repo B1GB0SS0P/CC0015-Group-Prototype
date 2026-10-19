@@ -13,7 +13,11 @@ interface SavedSession {
   name?: string;
 }
 
-const SESSION_KEY = "nsc-session";
+/** Each tab remembers its own seat. The host's own player seat (in the side panel) uses a second key. */
+export const SESSION_KEY = "nsc-session";
+export const SEAT_SESSION_KEY = "nsc-session-seat";
+/** Free hosts sleep after 15 minutes without incoming messages, which ends the game. */
+const KEEPALIVE_MS = 60_000;
 
 /**
  * Production: the game server also serves this page, so it's the same origin.
@@ -27,19 +31,19 @@ function serverUrl(): string {
   return window.location.origin;
 }
 
-function loadSession(): SavedSession | null {
+function loadSession(key: string): SavedSession | null {
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
+    const raw = sessionStorage.getItem(key);
     return raw ? (JSON.parse(raw) as SavedSession) : null;
   } catch {
     return null;
   }
 }
 
-function saveSession(s: SavedSession | null) {
+function saveSession(key: string, s: SavedSession | null) {
   try {
-    if (s) sessionStorage.setItem(SESSION_KEY, JSON.stringify(s));
-    else sessionStorage.removeItem(SESSION_KEY);
+    if (s) sessionStorage.setItem(key, JSON.stringify(s));
+    else sessionStorage.removeItem(key);
   } catch {
     // Private mode or storage blocked: refresh-to-resume just won't work.
   }
@@ -47,7 +51,7 @@ function saveSession(s: SavedSession | null) {
 
 function errorText(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
-  if (/not found|invalid room|room .* not/i.test(msg)) return "No game with that code. Check the board screen.";
+  if (/not found|invalid room|room .* not/i.test(msg)) return "No game with that code. Check the board screen. If the server restarted, the host needs to open a new board.";
   if (/failed to fetch|network|ECONNREFUSED|websocket/i.test(msg)) return "Can't reach the game server. Check your connection and try again.";
   return msg || "Something went wrong.";
 }
@@ -57,7 +61,7 @@ function errorText(err: unknown): string {
  * drops; a saved token lets a refreshed page resume, and as a last resort a
  * player rejoins their seat by name (the board by its host key).
  */
-export function useGame() {
+export function useGame(storageKey: string = SESSION_KEY) {
   const [state, setState] = useState<LiveState | null>(null);
   const [me, setMe] = useState<{ playerId: string | null; isHost: boolean } | null>(null);
   const [status, setStatus] = useState<Status>("idle");
@@ -65,6 +69,7 @@ export function useGame() {
   const roomRef = useRef<Room | null>(null);
   const clientRef = useRef<Client | null>(null);
   const sessionRef = useRef<SavedSession | null>(null);
+  const kickedRef = useRef(false);
 
   const client = useCallback(() => {
     if (!clientRef.current) clientRef.current = new Client(serverUrl());
@@ -81,29 +86,49 @@ export function useGame() {
     (room: Room, base: Omit<SavedSession, "token">) => {
       roomRef.current = room;
       sessionRef.current = { ...base, token: room.reconnectionToken };
-      saveSession(sessionRef.current);
+      saveSession(storageKey, sessionRef.current);
+      kickedRef.current = false;
       room.onMessage("state", (s: ServerMessages["state"]) => setState(s));
       room.onMessage("welcome", (w: ServerMessages["welcome"]) => {
         setMe({ playerId: w.playerId, isHost: w.isHost });
         sessionRef.current = { ...sessionRef.current!, code: w.code, hostKey: w.hostKey ?? sessionRef.current?.hostKey, token: room.reconnectionToken };
-        saveSession(sessionRef.current);
+        saveSession(storageKey, sessionRef.current);
       });
       room.onMessage("error", (e: ServerMessages["error"]) => flash(e.message));
+      room.onMessage("kicked", (k: ServerMessages["kicked"]) => {
+        kickedRef.current = true;
+        flash(k.message);
+      });
       room.onDrop(() => setStatus("reconnecting"));
       room.onReconnect(() => {
         setStatus("connected");
         if (sessionRef.current) {
           sessionRef.current = { ...sessionRef.current, token: room.reconnectionToken };
-          saveSession(sessionRef.current);
+          saveSession(storageKey, sessionRef.current);
         }
       });
       room.onLeave(() => {
-        if (roomRef.current === room) setStatus("closed");
+        if (roomRef.current !== room) return;
+        if (kickedRef.current) {
+          // Removed by the host: back to the start screen, and don't try to rejoin.
+          roomRef.current = null;
+          saveSession(storageKey, null);
+          setState(null);
+          setMe(null);
+          setStatus("idle");
+        } else setStatus("closed");
       });
       setStatus("connected");
     },
-    [flash],
+    [flash, storageKey],
   );
+
+  // Keep-alive while connected, so a quiet debrief doesn't let the server fall asleep.
+  useEffect(() => {
+    if (status !== "connected") return;
+    const t = window.setInterval(() => roomRef.current?.send("ping", {}), KEEPALIVE_MS);
+    return () => window.clearInterval(t);
+  }, [status]);
 
   const host = useCallback(async () => {
     setStatus("connecting");
@@ -132,7 +157,7 @@ export function useGame() {
 
   /** On page load: pick up where this tab left off, if anywhere. */
   useEffect(() => {
-    const saved = loadSession();
+    const saved = loadSession(storageKey);
     if (!saved) return;
     let cancelled = false;
     setStatus("connecting");
@@ -160,13 +185,13 @@ export function useGame() {
           // Seat still held by the old connection; retry.
         }
       }
-      saveSession(null);
+      saveSession(storageKey, null);
       if (!cancelled) setStatus("idle");
     })();
     return () => {
       cancelled = true;
     };
-  }, [attach, client]);
+  }, [attach, client, storageKey]);
 
   const send = useCallback(<K extends keyof ClientMessages>(type: K, payload: ClientMessages[K]) => {
     roomRef.current?.send(type, payload);
@@ -175,7 +200,7 @@ export function useGame() {
   const leave = useCallback(async () => {
     const room = roomRef.current;
     roomRef.current = null;
-    saveSession(null);
+    saveSession(storageKey, null);
     setState(null);
     setMe(null);
     setStatus("idle");
@@ -184,7 +209,7 @@ export function useGame() {
     } catch {
       // Already gone.
     }
-  }, []);
+  }, [storageKey]);
 
   return { state, me, status, error, host, join, send, leave, flash };
 }

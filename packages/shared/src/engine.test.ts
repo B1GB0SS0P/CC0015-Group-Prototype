@@ -10,6 +10,7 @@ import {
   createGame,
   forceAdvance,
   heal,
+  kickPlayer,
   setDone,
   setStatement,
   startGame,
@@ -256,5 +257,32 @@ describe("end of term", () => {
     const snapshot = JSON.stringify(s);
     placeAll(s, { study: 4 });
     expect(JSON.stringify(s)).toBe(snapshot);
+  });
+});
+
+describe("removing a player", () => {
+  it("frees the seat in the lobby", () => {
+    let s = createGame();
+    s = must(addPlayer(s, "a", "Ana"));
+    s = must(addPlayer(s, "b", "Ben"));
+    s = must(kickPlayer(s, "a"));
+    expect(s.players.map((p) => p.name)).toEqual(["Ben"]);
+  });
+
+  it("mid-game, moves on if the removed player was the last one to place", () => {
+    let s = started();
+    for (const p of s.players.slice(1)) {
+      s = must(submitPlacement(s, p.id, { placement: { rest: 4 }, explorerDouble: p.role === "explorer" ? "rest" : null }));
+    }
+    expect(s.phase).toBe("place");
+    s = must(kickPlayer(s, s.players[0]!.id));
+    expect(s.players).toHaveLength(4);
+    expect(s.phase).toBe("fight");
+  });
+
+  it("won't remove the last player mid-game", () => {
+    let s = started();
+    for (const p of s.players.slice(1)) s = must(kickPlayer(s, p.id));
+    expect(kickPlayer(s, s.players[0]!.id).ok).toBe(false);
   });
 });
