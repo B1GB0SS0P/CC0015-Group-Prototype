@@ -34,6 +34,8 @@ npm run dev
 
 Open http://localhost:5173 and choose **Open a board screen**. Phones on the same Wi-Fi can join at `http://<your-laptop-ip>:5173/join/<CODE>`, or by scanning the QR code on the board. New players can read the rules at `/how-to-play`.
 
+For a presentation, open `/demo`. It runs without the server: you play the Ally on a phone panel beside the board, three scripted bots play the rest of the team, and a guided tour walks through one game. Press → or Space for the next step, ← to go back, Esc to hide the tour, and P for presenter notes. The steps live in [`packages/client/src/demo/tour.ts`](packages/client/src/demo/tour.ts).
+
 On the board:
 - **Playing too?** in the lobby gives the host a seat. Their hand opens in a panel beside the board, which they can hide while projecting.
 - **Players** in the corner lets the host remove a player. A removed player can't rejoin that game under the same name. Mid-game, the team plays on without them.

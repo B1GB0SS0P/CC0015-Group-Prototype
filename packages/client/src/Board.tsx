@@ -1,5 +1,5 @@
 import QRCode from "qrcode";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { GAME_CONFIG, ROLE_INFO, TOKENS, TOKEN_LABEL, ACTION_PHRASE, aliveBosses, canStart, chipsFor, teamSummary, type Boss, type LogEntry, type Player } from "@nsc/shared";
 import type { Game, LiveState } from "./net";
 import { Battery, BossDoodle, ConnectionBanner, DoodleDefs, HpBoxes, TokenChip, Toast, Weakness } from "./ui";
@@ -146,10 +146,10 @@ function useBoardEffects(s: LiveState | null, boardRef: RefObject<HTMLDivElement
       p.style.strokeDashoffset = "0";
     });
     setTimeout(() => {
-      g.style.transition = "opacity .5s";
+      g.style.transition = "opacity .4s";
       g.style.opacity = "0";
-    }, 2200);
-    setTimeout(() => g.remove(), 2800);
+    }, 1100);
+    setTimeout(() => g.remove(), 1500);
   }
 
   function fx(className: string, text: string, at?: Element | null) {
@@ -195,7 +195,7 @@ function useBoardEffects(s: LiveState | null, boardRef: RefObject<HTMLDivElement
     setTimeout(() => {
       busy.current = false;
       pump();
-    }, 900);
+    }, 1500);
   }
 
   const last = s?.log[s.log.length - 1]?.seq ?? 0;
@@ -264,12 +264,12 @@ function Team({ s }: { s: LiveState }) {
   if (s.players.length === 0) return <p className="team-empty">Nobody yet. Scan the code to join.</p>;
   const playing = s.phase === "place" || s.phase === "fight";
   return (
-    <div className={`team${s.players.length >= 5 ? " crowded" : ""}`} style={{ gridTemplateColumns: `repeat(${Math.max(3, s.players.length)}, minmax(0, 1fr))` }}>
+    <div data-tour="team" className={`team${s.players.length >= 5 ? " crowded" : ""}`} style={{ gridTemplateColumns: `repeat(${Math.max(3, s.players.length)}, minmax(0, 1fr))` }}>
       {s.players.map((p) => {
         const st = status(p, s);
         const ok = st === "Ready" || st === "Placed" || st === "Done";
         return (
-          <div key={p.id} data-pid={p.id} className={`note${p.sittingOut ? " out" : ""}`}>
+          <div key={p.id} data-pid={p.id} data-tour={p.role ? `player-${p.role}` : undefined} className={`note${p.sittingOut ? " out" : ""}`}>
             {playing && p.sittingOut && <span className="need">Burned out. Bond brings them back</span>}
             {playing && !p.sittingOut && p.energy <= 1 && (
               <span className="need">
@@ -415,10 +415,10 @@ function Stage({
   }
   return (
     <div className={`stage${others.length ? " with-others" : ""}`}>
-      <div className="doodle">
+      <div className="doodle" data-tour="boss-current">
         <BossDoodle id={hero.id} />
       </div>
-      <div className="boss-info" data-boss={hero.id}>
+      <div className="boss-info" data-boss={hero.id} data-tour="boss-current">
         <h1 className="boss-name">{hero.name}</h1>
         <div className="boss-quote">{hero.blurb}</div>
         <HpBoxes boss={hero} />
@@ -516,7 +516,11 @@ function PlayersMenu({ s, send, onClose }: { s: LiveState; send: Game["send"]; o
   );
 }
 
-export function Board({ game }: { game: Game }) {
+/**
+ * The shared board screen. `controls` replaces the host's corner buttons
+ * (the /demo uses this for its own controls).
+ */
+export function Board({ game, controls }: { game: Game; controls?: ReactNode }) {
   const s = game.state;
   const [confirmSkip, setConfirmSkip] = useState(false);
   const [menu, setMenu] = useState(false);
@@ -588,7 +592,7 @@ export function Board({ game }: { game: Game }) {
 
             <div className={`middle${playing ? " with-banner" : ""}`}>
               {playing && (
-                <div className="banner-line" ref={bannerRef} aria-live="polite">
+                <div className="banner-line" ref={bannerRef} aria-live="polite" data-tour="log">
                   {banner ? <EventLine e={banner} s={s} /> : <span className="hint">{PHASE_HINT[s.phase]}</span>}
                 </div>
               )}
@@ -603,47 +607,51 @@ export function Board({ game }: { game: Game }) {
 
         <ConnectionBanner status={game.status} onReset={() => void game.leave()} />
 
-        {menu && <PlayersMenu s={s} send={game.send} onClose={() => setMenu(false)} />}
+        {menu && !controls && <PlayersMenu s={s} send={game.send} onClose={() => setMenu(false)} />}
 
         <div className="host-ctl">
-          {playing &&
-            (confirmSkip ? (
-              <>
-                <span>Move on without waiting? Anyone who hasn't finished does nothing this step.</span>
-                <button
-                  className="btn danger"
-                  onClick={() => {
-                    game.send("forceNext", {});
-                    setConfirmSkip(false);
-                  }}
-                >
-                  Move on
+          {controls ?? (
+            <>
+              {playing &&
+                (confirmSkip ? (
+                  <>
+                    <span>Move on without waiting? Anyone who hasn't finished does nothing this step.</span>
+                    <button
+                      className="btn danger"
+                      onClick={() => {
+                        game.send("forceNext", {});
+                        setConfirmSkip(false);
+                      }}
+                    >
+                      Move on
+                    </button>
+                    <button className="btn ghost" onClick={() => setConfirmSkip(false)}>
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button className="btn" onClick={() => setConfirmSkip(true)}>
+                    Skip waiting
+                  </button>
+                ))}
+              {s.phase === "over" && (
+                <button className="btn primary" onClick={() => game.send("restart", {})}>
+                  Play again
                 </button>
-                <button className="btn ghost" onClick={() => setConfirmSkip(false)}>
-                  Cancel
+              )}
+              {seat && (
+                <button className="btn" onClick={() => setSeatHidden((h) => !h)}>
+                  {seatHidden ? "Show my hand" : "Hide my hand"}
                 </button>
-              </>
-            ) : (
-              <button className="btn" onClick={() => setConfirmSkip(true)}>
-                Skip waiting
+              )}
+              <button className="btn" onClick={() => setMenu((m) => !m)} aria-expanded={menu}>
+                Players ({s.players.length})
               </button>
-            ))}
-          {s.phase === "over" && (
-            <button className="btn primary" onClick={() => game.send("restart", {})}>
-              Play again
-            </button>
+              <button className="btn ghost" onClick={() => void game.leave()}>
+                Close board
+              </button>
+            </>
           )}
-          {seat && (
-            <button className="btn" onClick={() => setSeatHidden((h) => !h)}>
-              {seatHidden ? "Show my hand" : "Hide my hand"}
-            </button>
-          )}
-          <button className="btn" onClick={() => setMenu((m) => !m)} aria-expanded={menu}>
-            Players ({s.players.length})
-          </button>
-          <button className="btn ghost" onClick={() => void game.leave()}>
-            Close board
-          </button>
         </div>
       </div>
 

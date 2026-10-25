@@ -7,6 +7,7 @@ import "./styles.css";
 import { useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { Board } from "./Board";
+import { Demo } from "./demo/Demo";
 import { Home } from "./Home";
 import { HowToPlay } from "./HowToPlay";
 import { SEAT_SESSION_KEY, SESSION_KEY, useGame } from "./net";
@@ -56,4 +57,5 @@ function App() {
 
 const root = createRoot(document.getElementById("root")!);
 // No StrictMode: its double-run of effects in development would open two connections on resume.
-root.render(window.location.pathname.replace(/\/$/, "") === "/how-to-play" ? <HowToPlay /> : <App />);
+const path = window.location.pathname.replace(/\/$/, "");
+root.render(path === "/how-to-play" ? <HowToPlay /> : path === "/demo" ? <Demo /> : <App />);

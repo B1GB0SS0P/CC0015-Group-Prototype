@@ -253,7 +253,7 @@ function Place({ me, state, send }: { me: Player; state: LiveState; send: Send }
         ))}
       </div>
 
-      <div className="trays">
+      <div className="trays" data-tour="place">
         {ACTIVITIES.map((a) => {
           const per = a === dbl ? 2 : 1;
           const tok = ACTIVITY_TOKEN[a];
@@ -320,7 +320,7 @@ function Place({ me, state, send }: { me: Player; state: LiveState; send: Send }
         </div>
       )}
 
-      <div className="sticky-foot">
+      <div className="sticky-foot" data-tour="place">
         <div className="narrow">
           <button
             className="btn primary block"
@@ -371,7 +371,7 @@ function Fight({ me, state, send }: { me: Player; state: LiveState; send: Send }
         )}
       </div>
 
-      <section className="stack" style={{ gap: 10 }}>
+      <section className="stack" style={{ gap: 10 }} data-tour="support">
         <h2>Help a teammate</h2>
         <p className="small muted">A Bond token gives a teammate +{GAME_CONFIG.bondRestore} Energy. You have {me.tokens.bond}.</p>
         {mates.map((m) => {
@@ -436,13 +436,13 @@ function Fight({ me, state, send }: { me: Player; state: LiveState; send: Send }
                     <TokenChip key={t} token={t} ghost={me.tokens[t] === 0} />
                   ))}
                 </div>
-                <button className="btn primary block" disabled={missing.length > 0} onClick={() => send("attackSet", { bossId: b.id, count: 1 })}>
+                <button data-tour="set" className="btn primary block" disabled={missing.length > 0} onClick={() => send("attackSet", { bossId: b.id, count: 1 })}>
                   {missing.length ? `Missing ${missing.map((t) => TOKEN_LABEL[t]).join(", ")}` : `Spend a full set (${GAME_CONFIG.setDamage} damage)`}
                 </button>
                 {missing.length > 0 && <p className="small muted">Ask a teammate to pass you what you're missing, or pass yours to whoever is closest to a set.</p>}
               </div>
             ) : (
-              <div className="hits">
+              <div className="hits" data-tour="attack">
                 {TOKENS.map((t) => {
                   const n = me.tokens[t];
                   const weak = b.weakness === t;
@@ -473,7 +473,7 @@ function Fight({ me, state, send }: { me: Player; state: LiveState; send: Send }
               Waiting for the team… (tap to undo)
             </button>
           ) : (
-            <button className="btn primary block" onClick={() => send("done", { done: true })}>
+            <button data-tour="done" className="btn primary block" onClick={() => send("done", { done: true })}>
               I'm done this term
             </button>
           )}

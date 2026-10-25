@@ -70,9 +70,14 @@ export function Home({ game, initialCode }: { game: Game; initialCode: string })
             <li>Each term, split your time between Study, Rest, Friends and Interest.</li>
             <li>Beat four bosses together. Grades alone won't do it.</li>
           </ol>
-          <a className="btn primary" href="/how-to-play">
-            How to play
-          </a>
+          <div className="row">
+            <a className="btn primary" href="/how-to-play">
+              How to play
+            </a>
+            <a className="btn" href="/demo">
+              Try the guided demo
+            </a>
+          </div>
         </section>
       </div>
     </main>

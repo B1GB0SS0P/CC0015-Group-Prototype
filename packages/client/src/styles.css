@@ -2093,3 +2093,182 @@ a.btn {
 a.btn.primary {
   color: var(--paper-raised);
 }
+
+/* ---------- /demo: board + your phone, with a guided tour ---------- */
+
+.demo-screen {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.demo-board {
+  flex: 1;
+  min-width: 0;
+}
+
+.demo-phone {
+  flex: none;
+  width: min(420px, 34vw);
+  height: 100vh;
+  overflow: hidden;
+  border-left: 2px solid var(--rule);
+  background-color: var(--paper);
+  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 31px, var(--rule) 31px, var(--rule) 32px);
+  /* Makes the phone's fixed footer and toasts sit inside this panel. */
+  transform: translateZ(0);
+}
+
+/* The scroller sits inside the transformed panel, so fixed footers stay put while it scrolls. */
+.demo-phone-scroll {
+  height: 100%;
+  overflow-y: auto;
+}
+
+.demo-phone .page {
+  min-height: 100%;
+}
+
+/* The tour: dims everything except the highlight. Clicks pass through to the game. */
+.tour {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.tour-dim {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 12, 28, 0.74);
+}
+
+.tour-hole {
+  position: absolute;
+  border-radius: 16px;
+  box-shadow:
+    0 0 0 5px var(--hi),
+    0 0 0 9999px rgba(8, 12, 28, 0.74);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tour-hole {
+    transition: left 0.3s ease, top 0.3s ease, width 0.3s ease, height 0.3s ease;
+  }
+}
+
+.tour-card {
+  position: absolute;
+  pointer-events: auto;
+  width: min(540px, calc(100vw - 32px));
+  background: #ffffff;
+  color: var(--ink);
+  border: 3px solid var(--ink);
+  border-radius: 18px;
+  padding: 22px 26px 16px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tour-card.center {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(760px, calc(100vw - 32px));
+  padding: 32px 36px 20px;
+}
+
+.tour-count {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.tour-card h2 {
+  font-size: clamp(2rem, 2.8vw, 2.8rem);
+}
+
+.tour-card.center h2 {
+  font-size: clamp(2.6rem, 4vw, 4rem);
+}
+
+.tour-caption {
+  font-size: clamp(1.3rem, 1.7vw, 1.65rem);
+  line-height: 1.35;
+}
+
+.tour-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.tour-actions .btn {
+  font-size: 1.2rem;
+  min-height: 54px;
+  padding: 10px 28px;
+}
+
+.tour-hint {
+  font-weight: 700;
+  font-size: 1.15rem;
+  line-height: 1.3;
+  background: var(--hi);
+  border-radius: 10px;
+  padding: 8px 14px;
+  text-align: right;
+}
+
+.tour-keys {
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+}
+
+/* Presenter notes: toggled with P, never part of the caption card. */
+.presenter {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 110;
+  width: min(640px, calc(100vw - 32px));
+  background: var(--ink);
+  color: #ffffff;
+  border-radius: 16px;
+  padding: 16px 22px 18px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.presenter-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #c9d3ea;
+}
+
+.presenter b {
+  font-family: var(--font-hand);
+  font-size: 1.5rem;
+}
+
+.presenter .say {
+  font-size: 1.35rem;
+  line-height: 1.4;
+}
+
+.presenter-next {
+  color: #c9d3ea;
+  font-weight: 700;
+}
